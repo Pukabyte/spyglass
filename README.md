@@ -53,7 +53,7 @@ The backend connects directly to the Docker socket at `/var/run/docker.sock` and
 ## App Category Taxonomy
 
 The App Store groups apps by the categories from [docs.saltbox.dev/apps](https://docs.saltbox.dev/apps/),
-stored in `data/app-categories.json`. When the Saltbox docs reorganize their apps, regenerate it:
+stored in `app-categories.json` (app root, generated). When the Saltbox docs reorganize their apps, regenerate it:
 
 ```bash
 npm run build:categories   # or: node scripts/build-app-categories.js

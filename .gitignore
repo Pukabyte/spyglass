@@ -24,6 +24,9 @@ dist-ssr
 *.sw?
 
 
+# Generated app category taxonomy (built by scripts/build-app-categories.js)
+app-categories.json
+
 # Secrets & local state
 .env
 .env.*

@@ -105,7 +105,8 @@ for (const [category, subs] of Object.entries(TAXONOMY)) {
 const system = [...new Set(SYSTEM_MODULES.map(normKey).filter((k) => k && !apps[k]))];
 
 const out = { generatedFrom: 'https://docs.saltbox.dev/apps/', apps, tree, system };
-const outPath = join(__dirname, '..', 'data', 'app-categories.json');
-fs.mkdirSync(dirname(outPath), { recursive: true });
+// Write to the app root, NOT data/ — data/ is bind-mounted from the host in
+// production and would shadow the image-baked file.
+const outPath = join(__dirname, '..', 'app-categories.json');
 fs.writeFileSync(outPath, JSON.stringify(out, null, 2));
 console.log(`Wrote ${Object.keys(apps).length} apps across ${Object.keys(tree).length} categories, ${system.length} system tags to ${outPath}`);

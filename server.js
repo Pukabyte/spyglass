@@ -780,7 +780,9 @@ let sbListCache = null;
 
 // App category taxonomy, generated from docs.saltbox.dev/apps/ by
 // scripts/build-app-categories.js. Keyed by alnum-only normalized app name.
-const APP_CATEGORIES_FILE = join(__dirname, 'data', 'app-categories.json');
+// Lives at the app root (NOT data/) so the image-baked copy isn't shadowed
+// by a host bind-mount of data/.
+const APP_CATEGORIES_FILE = join(__dirname, 'app-categories.json');
 let appCategoryTaxonomy = { apps: {}, tree: {} };
 function loadAppCategories() {
   try {
