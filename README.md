@@ -45,8 +45,22 @@ The backend server (`server.js`) provides the following endpoints:
 - `GET /api/docker/apps` - List of all Docker containers with status
 - `POST /api/docker/:appId/:action` - Control Docker containers (start/stop/restart)
 - `POST /api/saltbox/command` - Execute Saltbox CLI commands
+- `GET /api/saltbox/apps` - Available Saltbox/Sandbox app tags (from `sb list`)
+- `GET /api/saltbox/categories` - App category taxonomy (from the Saltbox docs)
 
 The backend connects directly to the Docker socket at `/var/run/docker.sock` and uses `systeminformation` for server metrics.
+
+## App Category Taxonomy
+
+The App Store groups apps by the categories from [docs.saltbox.dev/apps](https://docs.saltbox.dev/apps/),
+stored in `app-categories.json` (app root, generated). When the Saltbox docs reorganize their apps, regenerate it:
+
+```bash
+npm run build:categories   # or: node scripts/build-app-categories.js
+```
+
+The taxonomy lives in `scripts/build-app-categories.js`; edit the `TAXONOMY` literal there to
+match the docs, then re-run. Apps not in the taxonomy fall back to the "Application" category.
 
 ## Docker Socket Permissions
 
