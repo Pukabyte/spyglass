@@ -73,6 +73,19 @@ const TAXONOMY = {
   },
 };
 
+// System/utility module tags from docs.saltbox.dev/reference/modules/.
+// These are infra roles, not installable apps, so the App Store hides them.
+const SYSTEM_MODULES = [
+  'arr_db', 'backup', 'backup2', 'common', 'custom', 'diag',
+  'download_clients', 'download_indexers', 'hetzner_nfs', 'hetzner_vlan',
+  'kernel', 'main_tag', 'main_tags', 'media_server', 'motd', 'mount_templates',
+  'permissions', 'plex_auth_token', 'plex_db', 'plex_fix_futures', 'reboot',
+  'remote', 'restore', 'saltbox_mod', 'sandbox', 'shell', 'system',
+  'traefik_file_template', 'traefik_template', 'unionfs', 'user',
+  // Additional non-app tags that show up in `sb list`
+  'core', 'mounts', 'preinstall', 'settings',
+];
+
 const apps = {};
 const tree = {};
 for (const [category, subs] of Object.entries(TAXONOMY)) {
@@ -88,8 +101,11 @@ for (const [category, subs] of Object.entries(TAXONOMY)) {
   }
 }
 
-const out = { generatedFrom: 'https://docs.saltbox.dev/apps/', apps, tree };
+// System tags as alnum-only keys (deduped), excluding any that are real apps.
+const system = [...new Set(SYSTEM_MODULES.map(normKey).filter((k) => k && !apps[k]))];
+
+const out = { generatedFrom: 'https://docs.saltbox.dev/apps/', apps, tree, system };
 const outPath = join(__dirname, '..', 'data', 'app-categories.json');
 fs.mkdirSync(dirname(outPath), { recursive: true });
 fs.writeFileSync(outPath, JSON.stringify(out, null, 2));
-console.log(`Wrote ${Object.keys(apps).length} apps across ${Object.keys(tree).length} categories to ${outPath}`);
+console.log(`Wrote ${Object.keys(apps).length} apps across ${Object.keys(tree).length} categories, ${system.length} system tags to ${outPath}`);

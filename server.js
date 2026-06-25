@@ -988,7 +988,10 @@ app.get('/api/saltbox/apps', async (req, res) => {
 
 // Get the Saltbox app category taxonomy (from docs.saltbox.dev/apps/)
 app.get('/api/saltbox/categories', (req, res) => {
-  res.json(appCategoryTaxonomy.tree || {});
+  res.json({
+    tree: appCategoryTaxonomy.tree || {},
+    system: appCategoryTaxonomy.system || [],
+  });
 });
 
 // Check if apps are installed in Docker

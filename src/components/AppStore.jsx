@@ -52,6 +52,7 @@ const AppStore = ({ onInstall, currentUser }) => {
   const [selectedTaxCat, setSelectedTaxCat] = useState('all') // docs category
   const [categoryTree, setCategoryTree] = useState({})
   const [appCategoryMap, setAppCategoryMap] = useState({})
+  const [systemTags, setSystemTags] = useState(new Set())
   const [installing, setInstalling] = useState({})
   const [appIcons, setAppIcons] = useState({})
   const [appDescriptions, setAppDescriptions] = useState({})
@@ -73,8 +74,9 @@ const AppStore = ({ onInstall, currentUser }) => {
     try {
       const res = await fetch('/api/saltbox/categories', { credentials: 'include' })
       if (!res.ok) return
-      const tree = await res.json()
+      const { tree = {}, system = [] } = await res.json()
       setCategoryTree(tree)
+      setSystemTags(new Set(system))
       const map = {}
       for (const [cat, subs] of Object.entries(tree))
         for (const keys of Object.values(subs))
@@ -87,11 +89,14 @@ const AppStore = ({ onInstall, currentUser }) => {
 
   const allApps = useMemo(() => {
     const cat = (name) => appCategoryMap[norm(name)] || null
+    // Hide system/utility module tags (not installable apps), but never hide a
+    // tag that resolves to a real app category.
+    const isSystem = (name) => systemTags.has(norm(name)) && !cat(name)
     return [
       ...apps.saltbox.map(name => ({ name, source: 'saltbox', isSandbox: false, category: cat(name) })),
       ...apps.sandbox.map(name => ({ name, source: 'sandbox', isSandbox: true, category: cat(name) })),
-    ]
-  }, [apps, appCategoryMap])
+    ].filter(app => !isSystem(app.name))
+  }, [apps, appCategoryMap, systemTags])
 
   useEffect(() => {
     if (allApps.length === 0) return
