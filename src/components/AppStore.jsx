@@ -311,6 +311,21 @@ const AppStore = ({ onInstall, currentUser }) => {
     return { type: 'emoji', emoji: '📦' }
   }, [appIcons, resolvedIcons, failedIcons])
 
+  // NOTE: keep all hooks above the early return below — moving this useMemo
+  // below `if (loading)` makes hook order conditional and crashes the page.
+  const taxCatButtons = useMemo(() => {
+    const counts = {}
+    for (const app of allApps) {
+      const key = app.category || 'Other'
+      counts[key] = (counts[key] || 0) + 1
+    }
+    const cats = Object.keys(categoryTree)
+    const buttons = [{ id: 'all', label: `All categories (${allApps.length})` }]
+    for (const c of cats) if (counts[c]) buttons.push({ id: c, label: `${c} (${counts[c]})` })
+    if (counts['Other']) buttons.push({ id: 'Other', label: `Other (${counts['Other']})` })
+    return buttons
+  }, [allApps, categoryTree])
+
   if (loading) {
     return (
       <div className="p-6 space-y-6">
@@ -328,19 +343,6 @@ const AppStore = ({ onInstall, currentUser }) => {
     { id: 'saltbox', label: `Saltbox (${apps.saltbox.length})`, activeClass: 'bg-blue-500/15 text-blue-300 border-blue-500/40' },
     { id: 'sandbox', label: `Sandbox (${apps.sandbox.length})`, activeClass: 'bg-purple-500/15 text-purple-300 border-purple-500/40' },
   ]
-
-  const taxCatButtons = useMemo(() => {
-    const counts = {}
-    for (const app of allApps) {
-      const key = app.category || 'Other'
-      counts[key] = (counts[key] || 0) + 1
-    }
-    const cats = Object.keys(categoryTree)
-    const buttons = [{ id: 'all', label: `All categories (${allApps.length})` }]
-    for (const c of cats) if (counts[c]) buttons.push({ id: c, label: `${c} (${counts[c]})` })
-    if (counts['Other']) buttons.push({ id: 'Other', label: `Other (${counts['Other']})` })
-    return buttons
-  }, [allApps, categoryTree])
 
   return (
     <div className="p-6">
