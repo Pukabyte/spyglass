@@ -10,10 +10,29 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write   # needs write to create version tags on main
       packages: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # need all tags to compute next version
+
+      # On main: bump patch from the latest vX.Y.Z tag and create the new tag.
+      # GITHUB_TOKEN tag pushes don't re-trigger workflows, so no duplicate build.
+      - id: version
+        if: github.ref == 'refs/heads/main'
+        run: |
+          latest=$(git tag -l 'v*' --sort=-v:refname | head -n1)
+          if [ -z "$latest" ]; then
+            next="v0.1.0"
+          else
+            IFS=. read -r major minor patch <<< "${latest#v}"
+            next="v${major}.${minor}.$((patch + 1))"
+          fi
+          echo "Next version: $next"
+          git tag -a "$next" -m "Release $next"
+          git push origin "$next"
+          echo "version=$next" >> "$GITHUB_OUTPUT"
 
       - uses: docker/login-action@v3
         with:
@@ -27,6 +46,7 @@ jobs:
           images: ghcr.io/${{ github.repository }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ steps.version.outputs.version }},enable=${{ steps.version.outputs.version != '' }}
             type=ref,event=branch
             type=ref,event=tag
             type=sha
