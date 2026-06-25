@@ -1,0 +1,47 @@
+services:
+  spyglass:
+    restart: unless-stopped
+    container_name: spyglass
+    init: true
+    build: .
+    hostname: spyglass
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Etc/UTC
+      - NODE_ENV=production
+      - SSH_USER=${SSH_USER}
+      - SESSION_SECRET=${SESSION_SECRET}
+      - DOMAIN=${DOMAIN}
+      - SI_ROOTDIR=/hostfs
+    networks:
+      - saltbox
+    labels:
+      com.github.saltbox.saltbox_managed: true
+      diun.enable: true
+      traefik.enable: true
+      traefik.http.routers.spyglass-http.entrypoints: web
+      traefik.http.routers.spyglass-http.middlewares: globalHeaders@file,redirect-to-https@docker,robotHeaders@file,cloudflarewarp@docker
+      traefik.http.routers.spyglass-http.rule: Host(`${DOMAIN}`)
+      traefik.http.routers.spyglass-http.service: spyglass
+      traefik.http.routers.spyglass.entrypoints: websecure
+      traefik.http.routers.spyglass.middlewares: globalHeaders@file,secureHeaders@file,robotHeaders@file,cloudflarewarp@docker
+      traefik.http.routers.spyglass.rule: Host(`${DOMAIN}`)
+      traefik.http.routers.spyglass.service: spyglass
+      traefik.http.routers.spyglass.tls.certresolver: cfdns
+      traefik.http.routers.spyglass.tls.options: securetls@file
+      traefik.http.services.spyglass.loadbalancer.server.port: 3000
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - /opt/spyglass/data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /etc/localtime:/etc/localtime:ro
+      - ${SSH_KEY_PATH}:/root/.ssh/id_ed25519:ro
+      - /srv/git/saltbox:/srv/git/saltbox
+      - /opt:/opt:ro
+      - /:/hostfs:ro
+
+networks:
+  saltbox:
+    external: true

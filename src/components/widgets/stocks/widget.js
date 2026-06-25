@@ -1,0 +1,17 @@
+const widget = {
+  api: `https://finnhub.io/api/{endpoint}`,
+  mappings: {
+    quote: {
+      // https://finnhub.io/docs/api/quote
+      endpoint: "v1/quote",
+      params: ["symbol"]
+    },
+    status: {
+      // https://finnhub.io/docs/api/market-status
+      endpoint: "v1/stock/market-status",
+      params: ["exchange"]
+    }
+  }
+};
+
+export default widget;
