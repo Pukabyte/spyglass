@@ -48,7 +48,10 @@ const AppStore = ({ onInstall, currentUser }) => {
   const [apps, setApps] = useState({ saltbox: [], sandbox: [] })
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
-  const [selectedCategory, setSelectedCategory] = useState('all')
+  const [selectedCategory, setSelectedCategory] = useState('all') // source: all | saltbox | sandbox
+  const [selectedTaxCat, setSelectedTaxCat] = useState('all') // docs category
+  const [categoryTree, setCategoryTree] = useState({})
+  const [appCategoryMap, setAppCategoryMap] = useState({})
   const [installing, setInstalling] = useState({})
   const [appIcons, setAppIcons] = useState({})
   const [appDescriptions, setAppDescriptions] = useState({})
@@ -61,12 +64,34 @@ const AppStore = ({ onInstall, currentUser }) => {
   const loadedAppsRef = useRef(new Set())
   const observerRef = useRef(null)
 
-  useEffect(() => { fetchApps() }, [])
+  useEffect(() => { fetchApps(); fetchCategories() }, [])
 
-  const allApps = useMemo(() => [
-    ...apps.saltbox.map(name => ({ name, category: 'saltbox', isSandbox: false })),
-    ...apps.sandbox.map(name => ({ name, category: 'sandbox', isSandbox: true })),
-  ], [apps])
+  // Alnum-only normalization, mirrors server.js so docs display names match sb tags.
+  const norm = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+
+  const fetchCategories = async () => {
+    try {
+      const res = await fetch('/api/saltbox/categories', { credentials: 'include' })
+      if (!res.ok) return
+      const tree = await res.json()
+      setCategoryTree(tree)
+      const map = {}
+      for (const [cat, subs] of Object.entries(tree))
+        for (const keys of Object.values(subs))
+          for (const k of keys) map[k] = cat
+      setAppCategoryMap(map)
+    } catch (e) {
+      console.error('Failed to fetch categories:', e)
+    }
+  }
+
+  const allApps = useMemo(() => {
+    const cat = (name) => appCategoryMap[norm(name)] || null
+    return [
+      ...apps.saltbox.map(name => ({ name, source: 'saltbox', isSandbox: false, category: cat(name) })),
+      ...apps.sandbox.map(name => ({ name, source: 'sandbox', isSandbox: true, category: cat(name) })),
+    ]
+  }, [apps, appCategoryMap])
 
   useEffect(() => {
     if (allApps.length === 0) return
@@ -161,9 +186,11 @@ const AppStore = ({ onInstall, currentUser }) => {
 
   const filteredApps = useMemo(() => allApps.filter(app => {
     const matchesSearch = app.name.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesCategory = selectedCategory === 'all' || app.category === selectedCategory
-    return matchesSearch && matchesCategory
-  }), [allApps, searchTerm, selectedCategory])
+    const matchesSource = selectedCategory === 'all' || app.source === selectedCategory
+    const matchesTaxCat = selectedTaxCat === 'all'
+      || (selectedTaxCat === 'Other' ? !app.category : app.category === selectedTaxCat)
+    return matchesSearch && matchesSource && matchesTaxCat
+  }), [allApps, searchTerm, selectedCategory, selectedTaxCat])
 
   const fetchIconsBatch = useCallback(async (appNames) => {
     if (appNames.length === 0) return
@@ -297,6 +324,19 @@ const AppStore = ({ onInstall, currentUser }) => {
     { id: 'sandbox', label: `Sandbox (${apps.sandbox.length})`, activeClass: 'bg-purple-500/15 text-purple-300 border-purple-500/40' },
   ]
 
+  const taxCatButtons = useMemo(() => {
+    const counts = {}
+    for (const app of allApps) {
+      const key = app.category || 'Other'
+      counts[key] = (counts[key] || 0) + 1
+    }
+    const cats = Object.keys(categoryTree)
+    const buttons = [{ id: 'all', label: `All categories (${allApps.length})` }]
+    for (const c of cats) if (counts[c]) buttons.push({ id: c, label: `${c} (${counts[c]})` })
+    if (counts['Other']) buttons.push({ id: 'Other', label: `Other (${counts['Other']})` })
+    return buttons
+  }, [allApps, categoryTree])
+
   return (
     <div className="p-6">
       {/* Header */}
@@ -348,6 +388,25 @@ const AppStore = ({ onInstall, currentUser }) => {
             ))}
           </div>
         </div>
+
+        {taxCatButtons.length > 1 && (
+          <div className="flex flex-wrap gap-2">
+            {taxCatButtons.map(({ id, label }) => (
+              <button
+                key={id}
+                onClick={() => setSelectedTaxCat(id)}
+                className={cn(
+                  'px-3 py-1.5 rounded-lg text-xs font-medium border transition-all',
+                  selectedTaxCat === id
+                    ? 'bg-violet-500/15 text-violet-300 border-violet-500/40'
+                    : 'bg-white/5 text-slate-400 border-white/10 hover:text-slate-200 hover:bg-white/8'
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Grid */}
@@ -395,11 +454,11 @@ const AppStore = ({ onInstall, currentUser }) => {
                         <h3 className="font-semibold text-slate-100 text-sm mb-1.5" title={app.name}>{app.name}</h3>
                         <Badge className={cn(
                           'text-xs font-medium border',
-                          app.category === 'saltbox'
+                          app.source === 'saltbox'
                             ? 'bg-blue-500/15 text-blue-300 border-blue-500/30'
                             : 'bg-purple-500/15 text-purple-300 border-purple-500/30'
                         )}>
-                          {app.category}
+                          {app.category || app.source}
                         </Badge>
                       </div>
                     </div>

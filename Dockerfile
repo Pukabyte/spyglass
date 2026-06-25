@@ -14,6 +14,9 @@ RUN npm ci
 # Copy application source
 COPY . .
 
+# Generate the app category taxonomy (data/app-categories.json)
+RUN npm run build:categories
+
 # Build the frontend
 RUN npm run build
 

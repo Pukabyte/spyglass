@@ -465,19 +465,19 @@ function getAppInfo(name) {
   const iconType = iconPath ? 'image' : 'emoji';
   const fallback = iconPath && (iconPath.startsWith('http://') || iconPath.startsWith('https://')) ? getFallbackIconUrl(name) : null;
   
-  // Get category
-  let category = appCategories.default;
-  for (const [key, cat] of Object.entries(appCategories)) {
-    if (lowerName.includes(key)) {
-      category = cat;
-      break;
-    }
-  }
-  
+  // Get category from the docs taxonomy. Try the full name first (handles
+  // slugs like "code-server"), then the suffix-stripped base name (handles
+  // instances like "sonarr-4k" -> "sonarr").
+  const norm = (n) => n.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const meta = appCategoryTaxonomy.apps[norm(name)] || appCategoryTaxonomy.apps[norm(getBaseAppName(name))];
+  const category = meta ? meta.category : appCategories.default;
+  const subcategory = meta ? meta.subcategory : null;
+
   return {
     icon,
     iconType,
     category,
+    subcategory,
     fallback,
   };
 }
@@ -778,6 +778,20 @@ app.get('/api/server/stats', async (req, res) => {
 // Cache for sb list results
 let sbListCache = null;
 
+// App category taxonomy, generated from docs.saltbox.dev/apps/ by
+// scripts/build-app-categories.js. Keyed by alnum-only normalized app name.
+const APP_CATEGORIES_FILE = join(__dirname, 'data', 'app-categories.json');
+let appCategoryTaxonomy = { apps: {}, tree: {} };
+function loadAppCategories() {
+  try {
+    appCategoryTaxonomy = JSON.parse(fs.readFileSync(APP_CATEGORIES_FILE, 'utf-8'));
+  } catch (e) {
+    console.warn('app-categories.json missing; run `node scripts/build-app-categories.js`. Categories will default to "Application".');
+    appCategoryTaxonomy = { apps: {}, tree: {} };
+  }
+}
+loadAppCategories();
+
 // Cache for app descriptions (key: appName-isSandbox, value: { description, links, timestamp })
 const descriptionCache = new Map();
 const DESCRIPTION_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
@@ -970,6 +984,11 @@ app.get('/api/saltbox/apps', async (req, res) => {
     console.error('Error fetching Saltbox apps:', error);
     res.status(500).json({ error: 'Failed to fetch apps list', details: error.message });
   }
+});
+
+// Get the Saltbox app category taxonomy (from docs.saltbox.dev/apps/)
+app.get('/api/saltbox/categories', (req, res) => {
+  res.json(appCategoryTaxonomy.tree || {});
 });
 
 // Check if apps are installed in Docker
@@ -1211,15 +1230,15 @@ async function fetchAppDescription(appName, isSandbox) {
   
   try {
     let baseUrl;
-    // Special cases for apps with custom URLs that don't follow the standard pattern
+    // Special cases for apps whose docs URL doesn't follow the standard pattern.
     if (appName === 'plex-db' && !isSandbox) {
-      baseUrl = 'https://docs.saltbox.dev/apps/utility_tags/plex-db/';
+      baseUrl = 'https://docs.saltbox.dev/reference/modules/plex_db/?h=plex';
     } else if ((appName === 'it-tools' || appName === 'it_tools') && isSandbox) {
       baseUrl = 'https://docs.saltbox.dev/sandbox/apps/it_tools/?h=tools';
     } else if ((appName === 'your-spotify' || appName === 'yourspotify') && isSandbox) {
-      baseUrl = 'https://docs.saltbox.dev/sandbox/apps/yourspotify/';
+      baseUrl = 'https://docs.saltbox.dev/sandbox/apps/your_spotify/';
     } else if (appName === 'unifi' && isSandbox) {
-      baseUrl = 'https://docs.saltbox.dev/sandbox/apps/unifi-network-application';
+      baseUrl = 'https://docs.saltbox.dev/sandbox/apps/unifi_network_application/';
     } else {
       // Convert dashes to underscores for both sandbox and non-sandbox apps
       const urlAppName = appName.replace(/-/g, '_');
@@ -1250,7 +1269,22 @@ async function fetchAppDescription(appName, isSandbox) {
         baseUrl = altBaseUrl;
       }
     }
-    
+
+    // Still 404? Many utility/system tags (plex-db, arr-db, download-clients,
+    // media-server, etc.) are documented under /reference/modules/ instead of
+    // /apps/. Try that before giving up. See docs.saltbox.dev/reference/modules/
+    if (response.status === 404) {
+      const moduleUrl = `https://docs.saltbox.dev/reference/modules/${appName.replace(/-/g, '_')}/`;
+      const moduleResponse = await axios.get(moduleUrl, {
+        validateStatus: (status) => status < 500,
+        timeout: 10000,
+      });
+      if (moduleResponse.status === 200) {
+        baseUrl = moduleUrl;
+        response = moduleResponse;
+      }
+    }
+
     let description = null;
     let links = {
       projectHome: null,
@@ -2103,9 +2137,11 @@ app.post('/api/saltbox/command', async (req, res) => {
 
     let { command } = req.body;
     
-    // Validate command to prevent injection
-    // Allow: sb update (with optional flags), sb install <apps>, sb inventory, sb backup, sb restart, sb status, sb settings
-    const commandPattern = /^sb\s+(update(\s+--[\w-]+)*|install\s+[\w,\s-]+|inventory|backup|restart|status|settings)$/;
+    // Validate command to prevent injection. Subcommands mirror the current
+    // Saltbox CLI (`sb --help`). Backups/restores run as install tags
+    // (`sb install backup`), not a standalone `sb backup` subcommand.
+    // Allow: sb update [--flags], sb install <tags>, and read-only diagnostics.
+    const commandPattern = /^sb\s+(update(\s+--[\w-]+)*|install\s+[\w,\s.-]+|list|diag|logs|version|validate-config)$/;
     if (!commandPattern.test(command)) {
       console.error('Command validation failed:', command);
       return res.status(400).json({ error: 'Command not allowed or invalid format', received: command });

@@ -120,6 +120,7 @@ const InventoryEditor = ({ onClose, precachedConfigs, inline = false, currentUse
       'overseerr_docker_dns_servers': 'Array of DNS servers: ["8.8.8.8", "8.8.4.4"]',
       'saltbox_roles': 'Array of Saltbox roles to install',
       'sandbox_roles': 'Array of Sandbox roles to install',
+      'feederbox_roles': 'Array of Feederbox roles to install (feederbox install type)',
     }
     if (key.endsWith('_docker_volumes_custom')) return 'Array: Add custom Docker volumes (e.g., ["/srv:/host_srv", "/home:/host_home"])'
     if (key.endsWith('_docker_envs_custom')) return 'Object: Add custom environment variables (e.g., {"KEY": "value"})'

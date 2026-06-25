@@ -112,7 +112,7 @@ const SaltboxControls = ({ onRefresh, currentUser }) => {
       accentClass: 'hover:border-emerald-500/40 hover:bg-emerald-500/8',
       iconClass: 'text-emerald-400',
       badgeClass: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
-      command: 'sb backup',
+      command: 'sb install backup',
     },
   ]
 
