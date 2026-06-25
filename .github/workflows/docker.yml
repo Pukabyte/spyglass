@@ -30,7 +30,7 @@ jobs:
             next="v${major}.${minor}.$((patch + 1))"
           fi
           echo "Next version: $next"
-          git tag -a "$next" -m "Release $next"
+          git tag "$next"
           git push origin "$next"
           echo "version=$next" >> "$GITHUB_OUTPUT"
 
