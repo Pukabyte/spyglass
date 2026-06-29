@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import DockerAppsGrid from './DockerAppsGrid'
 import SaltboxControls from './SaltboxControls'
+import RebootButton from './RebootButton'
 import InventoryEditor from './InventoryEditor'
 import AppStore from './AppStore'
 import Terminal from './Terminal'
@@ -335,6 +336,7 @@ const Dashboard = ({ dockerApps, loading, onRefresh, showTerminal, onCloseTermin
                   <p className="text-sm text-slate-500 mt-0.5">Monitor your services and media servers</p>
                 </div>
                 <div className="flex items-center gap-2">
+                  <RebootButton currentUser={currentUser} />
                   {currentUser?.permissions?.includes('dashboard:edit') && (
                     <Button
                       variant="ghost"

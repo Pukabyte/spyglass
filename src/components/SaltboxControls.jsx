@@ -1,4 +1,4 @@
-import { Terminal, RefreshCw, Download, Upload, Power } from 'lucide-react'
+import { Terminal, RefreshCw, Download, Upload } from 'lucide-react'
 import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
@@ -52,36 +52,6 @@ const SaltboxControls = ({ onRefresh, currentUser }) => {
   }, [updateJobId, onRefresh])
 
   const canExecute = currentUser?.permissions?.includes('saltbox:execute')
-  const canControlServer = currentUser?.permissions?.includes('server:control')
-
-  const handleReboot = async () => {
-    if (!canControlServer) {
-      alert('You do not have permission to reboot the server')
-      return
-    }
-    if (!window.confirm('Reboot the entire server?\n\nThis runs "sudo reboot" on the host. Every service and all sessions will drop until the machine comes back up.')) {
-      return
-    }
-
-    setLoading(prev => ({ ...prev, reboot: true }))
-    try {
-      const response = await fetch('/api/server/reboot', {
-        method: 'POST',
-        credentials: 'include',
-      })
-      if (response.ok) {
-        alert('Reboot issued. The server is going down now.')
-      } else {
-        const errorData = await response.json().catch(() => ({}))
-        alert(`Reboot failed: ${errorData.error || 'Unknown error'}`)
-      }
-    } catch (error) {
-      console.error('Failed to reboot:', error)
-      alert(`Failed to reboot: ${error.message}`)
-    } finally {
-      setLoading(prev => ({ ...prev, reboot: false }))
-    }
-  }
 
   const handleSaltboxCommand = async (command) => {
     if (!canExecute) {
@@ -224,38 +194,6 @@ const SaltboxControls = ({ onRefresh, currentUser }) => {
             )
           })}
         </motion.div>
-
-        {canControlServer && (
-          <button
-            onClick={handleReboot}
-            disabled={loading.reboot}
-            className={cn(
-              'w-full mt-3 p-4 rounded-xl border border-red-500/20 bg-red-500/5 transition-all duration-200 text-left group',
-              !loading.reboot && 'hover:scale-[1.01] hover:border-red-500/40 hover:bg-red-500/10 hover:shadow-md hover:shadow-black/20',
-              loading.reboot && 'opacity-50 cursor-not-allowed'
-            )}
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-red-500/10 border border-red-500/20 flex items-center justify-center flex-shrink-0">
-                <Power className="w-4.5 h-4.5 text-red-400" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="font-semibold text-slate-100 text-sm">Reboot Server</div>
-                <div className="text-xs text-slate-500 mt-0.5">Restart the host machine (sudo reboot)</div>
-              </div>
-              {loading.reboot ? (
-                <div className="flex items-center gap-1.5 flex-shrink-0">
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-slate-400" />
-                  <span className="text-xs text-slate-500">Rebooting...</span>
-                </div>
-              ) : (
-                <Badge className="text-xs border bg-red-500/15 text-red-300 border-red-500/30 opacity-0 group-hover:opacity-100 transition-opacity">
-                  Reboot
-                </Badge>
-              )}
-            </div>
-          </button>
-        )}
       </CardContent>
     </Card>
   )

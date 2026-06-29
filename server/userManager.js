@@ -238,7 +238,9 @@ export async function createUser(userData) {
     password: hashedPassword,
     email: email || null,
     role: roleData.name,
-    permissions: permissions.length > 0 ? permissions : roleData.permissions,
+    // Store per-user extras only; role permissions are merged at read time
+    // (getEffectivePermissions) so role edits stay authoritative.
+    permissions: permissions.filter((p) => !roleData.permissions.includes(p)),
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     active: true,
@@ -284,15 +286,17 @@ export async function updateUser(id, updates) {
   if (updates.role) {
     const roleData = await getRoleData(updates.role);
     user.role = roleData.name;
-    // If no custom permissions provided, use role defaults
+    // No custom permissions => clear extras; the role supplies perms live.
     if (!updates.permissions || updates.permissions.length === 0) {
-      user.permissions = roleData.permissions;
+      user.permissions = [];
     }
   }
 
-  // Update permissions if provided
+  // Update permissions if provided: store extras only (minus role defaults),
+  // so role edits remain authoritative for everything the role grants.
   if (updates.permissions !== undefined) {
-    user.permissions = updates.permissions;
+    const roleData = await getRoleData(updates.role || user.role);
+    user.permissions = updates.permissions.filter((p) => !roleData.permissions.includes(p));
   }
 
   // Update active status if provided
@@ -348,6 +352,24 @@ export function getEffectivePermissions(user) {
     }
   }
   return stored;
+}
+
+// One-time/idempotent migration: strip role-default permissions from each
+// user's stored array, leaving only genuine per-user extras. Safe to run on
+// every boot — once stripped, re-running is a no-op.
+export async function migratePermissionsToExtras() {
+  const data = readUsers();
+  let changed = false;
+  for (const user of data.users) {
+    if (!user.role || !Array.isArray(user.permissions)) continue;
+    const roleData = await getRoleData(user.role);
+    const extras = user.permissions.filter((p) => !roleData.permissions.includes(p));
+    if (extras.length !== user.permissions.length) {
+      user.permissions = extras;
+      changed = true;
+    }
+  }
+  if (changed) writeUsers(data);
 }
 
 export function hasPermission(user, permission) {

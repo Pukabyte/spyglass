@@ -2782,6 +2782,9 @@ function getCredentialsFromAccounts() {
 // Initialize user management system with admin from accounts.yml
 (async () => {
   await userManager.initializeDefaultAdmin(getCredentialsFromAccounts);
+  // One-time/idempotent: convert stored user.permissions from a full role
+  // snapshot to per-user extras only, so role edits (add AND remove) apply live.
+  await userManager.migratePermissionsToExtras();
 })();
 
 // Login endpoint
@@ -2803,8 +2806,9 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
         req.session.userId = user.id;
         req.session.username = user.username;
         const { password: _, ...userWithoutPassword } = user;
-        return res.json({ 
-          success: true, 
+        userWithoutPassword.permissions = userManager.getEffectivePermissions(user);
+        return res.json({
+          success: true,
           message: 'Login successful',
           user: userWithoutPassword
         });
