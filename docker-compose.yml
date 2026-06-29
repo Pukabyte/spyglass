@@ -3,7 +3,8 @@ services:
     restart: unless-stopped
     container_name: spyglass
     init: true
-    image: ghcr.io/pukabyte/spyglass:saltbox-update
+    image: ghcr.io/pukabyte/spyglass:latest
+    build: .
     hostname: spyglass
     environment:
       - PUID=1000

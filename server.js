@@ -580,6 +580,28 @@ app.use('/api', (req, res, next) => {
   return requireAuth(req, res, next);
 });
 
+// Reboot the host machine
+app.post('/api/server/reboot', requireAuth, requirePermission(userManager.PERMISSIONS.SERVER_CONTROL), async (req, res) => {
+  try {
+    // Reboot the host over the same SSH-to-host channel the sb commands use.
+    // The SSH pipe dies as the host goes down, so a broken connection / timeout
+    // here means the reboot was issued, not that it failed. Fire and report.
+    execAsync(buildSshCommand('sudo reboot'), {
+      env: { ...process.env, DEBIAN_FRONTEND: 'noninteractive' },
+      maxBuffer: 1024,
+      timeout: 15000,
+    }).catch((err) => {
+      // Expected: connection drops once the host starts rebooting.
+      console.log('Reboot SSH connection closed (expected if reboot issued):', err.message);
+    });
+    console.log(`Host reboot requested by user ${req.session.userId}`);
+    return res.json({ success: true, message: 'Reboot command issued. The server is going down now.' });
+  } catch (err) {
+    console.error('Failed to issue reboot:', err);
+    return res.status(500).json({ error: 'Failed to issue reboot', details: err.message });
+  }
+});
+
 // Get server statistics
 app.get('/api/server/stats', async (req, res) => {
   try {
