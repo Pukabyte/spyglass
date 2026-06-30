@@ -583,6 +583,21 @@ app.use('/api', (req, res, next) => {
 // Reboot the host machine
 app.post('/api/server/reboot', requireAuth, requirePermission(userManager.PERMISSIONS.SERVER_CONTROL), async (req, res) => {
   try {
+    // Snapshot what's running now so we can bring exactly these back on startup
+    // if Docker's restart policy doesn't restore them (see restoreRebootSnapshot).
+    try {
+      const running = (await docker.listContainers())
+        .map(c => c.Names[0]?.replace(/^\//, ''))
+        .filter(Boolean);
+      await fs.promises.writeFile(
+        REBOOT_SNAPSHOT_FILE,
+        JSON.stringify({ at: new Date().toISOString(), containers: running }, null, 2)
+      );
+      console.log(`Reboot snapshot: recorded ${running.length} running container(s)`);
+    } catch (snapErr) {
+      console.error('Reboot snapshot failed (continuing with reboot):', snapErr.message);
+    }
+
     // Reboot the host over the same SSH-to-host channel the sb commands use.
     // The SSH pipe dies as the host goes down, so a broken connection / timeout
     // here means the reboot was issued, not that it failed. Fire and report.
@@ -3314,6 +3329,7 @@ const WIDGETS_FILE = join(__dirname, 'data', 'widgets.json');
 const WIDGET_CONFIG_FILE = join(__dirname, 'data', 'widget-config.json');
 
 // Ensure data directory exists
+const REBOOT_SNAPSHOT_FILE = join(__dirname, 'data', 'reboot-snapshot.json');
 const DATA_DIR = join(__dirname, 'data');
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -4685,39 +4701,39 @@ if (isProduction && fs.existsSync(distPath)) {
   });
 }
 
-// After a host reboot, Docker's unless-stopped/always policy occasionally fails
-// to bring containers back (e.g. they were caught mid-stop as the daemon went
-// down), leaving everything except spyglass itself dead. Spyglass restarts at
-// boot, so on startup we reconcile: if the HOST just booted, start any container
-// whose restart policy says it should be running.
-// ponytail: gated on host uptime so a spyglass-only restart (e.g. an update)
-//   never touches containers; ceiling = a container the user deliberately left
-//   stopped before a reboot will get restarted. Acceptable per the requirement
-//   "bring all containers back up after rebooting".
-async function reconcileContainersAfterBoot() {
+// On reboot we snapshot the running containers (see /api/server/reboot). After
+// the host comes back, Docker only auto-restores containers that were running
+// when the daemon stopped, so any that were caught stopped stay down -- leaving
+// e.g. traefik dead and the UI unreachable even though spyglass is up. On
+// startup we replay the snapshot: start exactly the containers that were running
+// at reboot but aren't now, then consume the snapshot so it runs once.
+// ponytail: keyed on the snapshot file, so a plain spyglass restart (no reboot,
+//   no snapshot) does nothing and deliberately-stopped containers are untouched.
+async function restoreRebootSnapshot() {
+  let snap;
   try {
-    const { stdout } = await execAsync(buildSshCommand('cut -d. -f1 /proc/uptime'), {
-      env: { ...process.env }, maxBuffer: 1024, timeout: 15000,
-    });
-    const hostUptime = parseInt((stdout || '').trim(), 10);
-    if (!Number.isFinite(hostUptime) || hostUptime > 600) return; // not a fresh boot
-    const containers = await docker.listContainers({ all: true });
+    snap = JSON.parse(await fs.promises.readFile(REBOOT_SNAPSHOT_FILE, 'utf8'));
+  } catch {
+    return; // no snapshot -> normal start, nothing to restore
+  }
+  try {
+    const running = new Set(
+      (await docker.listContainers()).map(c => c.Names[0]?.replace(/^\//, ''))
+    );
     let restarted = 0;
-    for (const c of containers.filter(c => c.State !== 'running')) {
-      const name = c.Names[0]?.replace(/^\//, '') || c.Id.slice(0, 12);
+    for (const name of snap.containers || []) {
+      if (!name || running.has(name)) continue;
       try {
-        const policy = (await docker.getContainer(c.Id).inspect()).HostConfig?.RestartPolicy?.Name;
-        if (policy !== 'always' && policy !== 'unless-stopped') continue;
-        await docker.getContainer(c.Id).start();
+        await docker.getContainer(name).start();
         restarted++;
-        console.log(`Boot reconcile: started ${name} (policy=${policy})`);
+        console.log(`Reboot restore: started ${name}`);
       } catch (e) {
-        console.error(`Boot reconcile: failed to start ${name}:`, e.message);
+        console.error(`Reboot restore: failed to start ${name}:`, e.message);
       }
     }
-    if (restarted) console.log(`Boot reconcile: restarted ${restarted} container(s) after host boot (uptime ${hostUptime}s)`);
-  } catch (err) {
-    console.error('Boot container reconcile skipped:', err.message);
+    if (restarted) console.log(`Reboot restore: brought back ${restarted} container(s) from snapshot taken ${snap.at}`);
+  } finally {
+    await fs.promises.unlink(REBOOT_SNAPSHOT_FILE).catch(() => {});
   }
 }
 
@@ -4728,6 +4744,6 @@ app.listen(PORT, () => {
     console.log(`Frontend dev server should be running on http://localhost:5173`);
     console.log(`API available at http://localhost:${PORT}/api`);
   }
-  reconcileContainersAfterBoot();
+  restoreRebootSnapshot();
 });
 
