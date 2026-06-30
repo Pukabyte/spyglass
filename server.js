@@ -4685,6 +4685,42 @@ if (isProduction && fs.existsSync(distPath)) {
   });
 }
 
+// After a host reboot, Docker's unless-stopped/always policy occasionally fails
+// to bring containers back (e.g. they were caught mid-stop as the daemon went
+// down), leaving everything except spyglass itself dead. Spyglass restarts at
+// boot, so on startup we reconcile: if the HOST just booted, start any container
+// whose restart policy says it should be running.
+// ponytail: gated on host uptime so a spyglass-only restart (e.g. an update)
+//   never touches containers; ceiling = a container the user deliberately left
+//   stopped before a reboot will get restarted. Acceptable per the requirement
+//   "bring all containers back up after rebooting".
+async function reconcileContainersAfterBoot() {
+  try {
+    const { stdout } = await execAsync(buildSshCommand('cut -d. -f1 /proc/uptime'), {
+      env: { ...process.env }, maxBuffer: 1024, timeout: 15000,
+    });
+    const hostUptime = parseInt((stdout || '').trim(), 10);
+    if (!Number.isFinite(hostUptime) || hostUptime > 600) return; // not a fresh boot
+    const containers = await docker.listContainers({ all: true });
+    let restarted = 0;
+    for (const c of containers.filter(c => c.State !== 'running')) {
+      const name = c.Names[0]?.replace(/^\//, '') || c.Id.slice(0, 12);
+      try {
+        const policy = (await docker.getContainer(c.Id).inspect()).HostConfig?.RestartPolicy?.Name;
+        if (policy !== 'always' && policy !== 'unless-stopped') continue;
+        await docker.getContainer(c.Id).start();
+        restarted++;
+        console.log(`Boot reconcile: started ${name} (policy=${policy})`);
+      } catch (e) {
+        console.error(`Boot reconcile: failed to start ${name}:`, e.message);
+      }
+    }
+    if (restarted) console.log(`Boot reconcile: restarted ${restarted} container(s) after host boot (uptime ${hostUptime}s)`);
+  } catch (err) {
+    console.error('Boot container reconcile skipped:', err.message);
+  }
+}
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Spyglass server running on port ${PORT}`);
@@ -4692,5 +4728,6 @@ app.listen(PORT, () => {
     console.log(`Frontend dev server should be running on http://localhost:5173`);
     console.log(`API available at http://localhost:${PORT}/api`);
   }
+  reconcileContainersAfterBoot();
 });
 
